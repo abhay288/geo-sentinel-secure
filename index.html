@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo-Sentinel: Change Detection & Monitoring</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet.js for Interactive Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Leaflet.draw for Drawing on Maps -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Custom styles to enhance the UI */
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent body scrollbars */
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 0.5rem;
+        }
+        
+        .leaflet-draw-toolbar a {
+            background-color: #ffffff !important;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .leaflet-draw-toolbar a:hover {
+            background-color: #f4f4f4 !important;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 90%;
+        }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="flex flex-col h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-md z-10">
+            <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.002 6.002 0 0110.421-2.253.75.75 0 001.113-1.002A7.5 7.5 0 002.5 10.5a.75.75 0 001.5 0 6.002 6.002 0 01.332-2.473zm11.336 3.946a6.002 6.002 0 01-10.421 2.253.75.75 0 10-1.113 1.002A7.5 7.5 0 0017.5 9.5a.75.75 0 00-1.5 0 6.002 6.002 0 01-.332 2.473z" clip-rule="evenodd" />
+                    </svg>
+                    <h1 class="text-xl font-bold text-gray-800">Geo-Sentinel</h1>
+                </div>
+                <div class="text-sm text-gray-500">
+                    Monitoring the pulse of our planet.
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow flex p-4 space-x-4 overflow-hidden">
+            
+            <!-- Left Panel: Map -->
+            <div class="flex-grow w-2/3 flex flex-col">
+                <div id="map" class="shadow-lg"></div>
+            </div>
+
+            <!-- Right Panel: Controls & Info -->
+            <div class="w-1/3 flex flex-col space-y-4">
+                <!-- AOI Management -->
+                <div class="bg-white p-4 rounded-lg shadow-lg flex-shrink-0">
+                    <h2 class="text-lg font-bold border-b pb-2 mb-3">1. Area of Interest (AOI)</h2>
+                    
+                    <div id="aoi-notification" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-3 rounded-md text-sm mb-4" role="alert">
+                        <p id="aoi-notification-text"></p>
+                    </div>
+
+                    <p class="text-sm text-gray-600 mb-4">Use the tools on the map to draw a polygon defining your area of interest.</p>
+                    <div id="aoi-info" class="bg-gray-50 p-3 rounded-md text-sm hidden">
+                        <p class="font-semibold">AOI Defined</p>
+                        <p id="aoi-details" class="text-gray-700 mt-1"></p>
+                        <button id="clear-aoi-btn" class="mt-3 w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Clear AOI</button>
+                    </div>
+                     <div id="aoi-help" class="text-center text-gray-500">
+                        <p>No AOI selected.</p>
+                    </div>
+                </div>
+
+                <!-- Change Detection Controls -->
+                <div id="change-detection-panel" class="bg-white p-4 rounded-lg shadow-lg flex-shrink-0 hidden">
+                    <h2 class="text-lg font-bold border-b pb-2 mb-3">2. Run Change Detection</h2>
+                    <p class="text-sm text-gray-600 mb-4">Simulate a change detection analysis for the selected AOI.</p>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="threshold" class="block text-sm font-medium text-gray-700">Alert Threshold (%)</label>
+                            <input type="range" id="threshold" name="threshold" min="5" max="50" value="20" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <div class="text-center text-sm text-gray-500 mt-1"><span id="threshold-value">20</span>%</div>
+                        </div>
+                        <button id="run-detection-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center justify-center">
+                            <svg id="run-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
+                            </svg>
+                            <svg id="loading-spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span id="run-btn-text">Run Detection</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results & Alerts -->
+                <div id="results-panel" class="bg-white p-4 rounded-lg shadow-lg flex-grow overflow-y-auto hidden">
+                    <h2 class="text-lg font-bold border-b pb-2 mb-3">3. Results & Alerts</h2>
+                    <div id="results-content">
+                        <!-- Dynamic content will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Alerts -->
+    <div id="alert-modal" class="modal-backdrop hidden">
+        <div class="modal-content text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+                <svg class="h-6 w-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4" id="modal-title">Significant Change Detected!</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500" id="modal-body">
+                    A significant change has been detected in your Area of Interest.
+                </p>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button id="close-modal-btn" class="px-4 py-2 bg-blue-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    View Details
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- MAP INITIALIZATION ---
+            const map = L.map('map').setView([26.8467, 80.9462], 7); // Centered on Uttar Pradesh
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // --- LEAFLET.DRAW INITIALIZATION ---
+            const drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+
+            const drawControl = new L.Control.Draw({
+                edit: { featureGroup: drawnItems, remove: false },
+                draw: {
+                    polygon: {
+                        shapeOptions: { color: '#3b82f6', fillColor: '#60a5fa', fillOpacity: 0.5 },
+                        allowIntersection: false,
+                        drawError: { color: '#ef4444', message: '<strong>Error:</strong> Polygons cannot intersect!' },
+                    },
+                    polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false
+                }
+            });
+            map.addControl(drawControl);
+
+            // --- UI ELEMENT REFERENCES ---
+            const aoiInfoPanel = document.getElementById('aoi-info');
+            const aoiHelpText = document.getElementById('aoi-help');
+            const aoiDetailsText = document.getElementById('aoi-details');
+            const clearAoiBtn = document.getElementById('clear-aoi-btn');
+            const changeDetectionPanel = document.getElementById('change-detection-panel');
+            const resultsPanel = document.getElementById('results-panel');
+            const resultsContent = document.getElementById('results-content');
+            const runDetectionBtn = document.getElementById('run-detection-btn');
+            const thresholdSlider = document.getElementById('threshold');
+            const thresholdValue = document.getElementById('threshold-value');
+            const alertModal = document.getElementById('alert-modal');
+            const modalBody = document.getElementById('modal-body');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            
+            let aoiLayer = null;
+            let changeLayer = null;
+            let lastChangeData = {};
+
+            // --- EVENT LISTENERS ---
+            map.on(L.Draw.Event.CREATED, function (event) {
+                if (aoiLayer) {
+                    showAoiNotification("Please clear the existing AOI before drawing a new one.");
+                    return;
+                }
+                aoiLayer = event.layer;
+                drawnItems.addLayer(aoiLayer);
+                const area = L.GeometryUtil.geodesicArea(aoiLayer.getLatLngs()[0]);
+                const areaSqKm = (area / 1000000).toFixed(2);
+                updateAoiInfo(areaSqKm);
+                showChangeDetectionPanel();
+            });
+            
+            clearAoiBtn.addEventListener('click', clearAll);
+            thresholdSlider.addEventListener('input', (e) => thresholdValue.textContent = e.target.value);
+            runDetectionBtn.addEventListener('click', runChangeDetectionSimulation);
+            closeModalBtn.addEventListener('click', () => alertModal.classList.add('hidden'));
+
+            // --- CORE FUNCTIONS ---
+            function clearAll() {
+                if (aoiLayer) { drawnItems.removeLayer(aoiLayer); aoiLayer = null; }
+                if (changeLayer) { map.removeLayer(changeLayer); changeLayer = null; }
+                updateAoiInfo(null);
+                hideAllPanels();
+            }
+
+            function showAoiNotification(message, duration = 4000) {
+                const notificationPanel = document.getElementById('aoi-notification');
+                const notificationText = document.getElementById('aoi-notification-text');
+                notificationText.textContent = message;
+                notificationPanel.classList.remove('hidden');
+                setTimeout(() => notificationPanel.classList.add('hidden'), duration);
+            }
+
+            function updateAoiInfo(areaSqKm) {
+                if (areaSqKm) {
+                    aoiInfoPanel.classList.remove('hidden');
+                    aoiHelpText.classList.add('hidden');
+                    aoiDetailsText.innerHTML = `Area: <strong>${areaSqKm} sq. km</strong>`;
+                } else {
+                    aoiInfoPanel.classList.add('hidden');
+                    aoiHelpText.classList.remove('hidden');
+                }
+            }
+            
+            function showChangeDetectionPanel() { changeDetectionPanel.classList.remove('hidden'); }
+            function hideAllPanels() {
+                changeDetectionPanel.classList.add('hidden');
+                resultsPanel.classList.add('hidden');
+            }
+
+            function setLoadingState(isLoading, buttonId, text) {
+                const button = document.getElementById(buttonId);
+                if (!button) return;
+                
+                const originalText = button.innerHTML;
+                button.disabled = isLoading;
+                if (isLoading) {
+                    button.innerHTML = `<div class="spinner mr-2"></div> ${text}...`;
+                    button.classList.add('cursor-not-allowed', 'opacity-75');
+                } else {
+                    // This part needs to be handled carefully, restoring original content.
+                    // For now, let's just re-enable it. A better approach would store the original state.
+                    button.disabled = false;
+                    button.classList.remove('cursor-not-allowed', 'opacity-75');
+                    // The button's text is reset in the calling function.
+                }
+            }
+
+            async function callGeminiAPI(prompt) {
+                const apiKey = "AIzaSyCDYXZHCI-bDcdZob0BSuPcjOfXdxXLDfI"; // Will be provided by the environment
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }]
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts.length > 0) {
+                        return result.candidates[0].content.parts[0].text;
+                    } else {
+                        return "Could not generate a response. The model's reply was empty.";
+                    }
+                } catch (error) {
+                    console.error("Gemini API call failed:", error);
+                    return "Failed to generate analysis. Please check the console for details.";
+                }
+            }
+
+            async function generateImpactAnalysis() {
+                const { changePercentage, lossCount, gainCount, center } = lastChangeData;
+                const analysisContainer = document.getElementById('ai-analysis-container');
+                const analysisButton = document.getElementById('generate-analysis-btn');
+
+                analysisButton.disabled = true;
+                analysisContainer.innerHTML = `<div class="flex items-center justify-center p-4"><div class="spinner mr-3"></div> Generating analysis...</div>`;
+
+                const prompt = `You are a geospatial analyst. A satellite has detected a significant change of ${changePercentage.toFixed(1)}% in a rural area near latitude ${center.lat.toFixed(4)}, longitude ${center.lng.toFixed(4)} in Uttar Pradesh, India.
+                The changes consist of ${lossCount} areas of vegetation loss and ${gainCount} areas of vegetation gain.
+                Write a brief, 2-4 sentence impact analysis for a non-expert user. Explain what this could mean (e.g., potential impact on local agriculture, signs of new infrastructure development, or natural ecosystem shifts).`;
+
+                const analysisText = await callGeminiAPI(prompt);
+                
+                analysisContainer.innerHTML = `
+                    <h4 class="font-semibold text-gray-800 mt-4">✨ AI Impact Analysis</h4>
+                    <p class="text-sm text-gray-600 mt-2 bg-gray-50 p-3 rounded-md">${analysisText.replace(/\n/g, '<br>')}</p>
+                `;
+                analysisButton.disabled = false;
+            }
+            
+            async function generateAlertSummary() {
+                const { changePercentage, center } = lastChangeData;
+                modalBody.innerHTML = `<div class="flex items-center justify-center"><div class="spinner mr-2"></div> Generating summary...</div>`;
+                
+                const prompt = `For an alert notification, briefly summarize in one sentence the potential impact of a ${changePercentage.toFixed(1)}% land change (mostly vegetation loss) detected near latitude ${center.lat.toFixed(4)}, longitude ${center.lng.toFixed(4)} in a rural part of India.`;
+
+                const summaryText = await callGeminiAPI(prompt);
+                modalBody.textContent = summaryText;
+            }
+
+            function runChangeDetectionSimulation() {
+                if (!aoiLayer) return;
+
+                setLoadingState(true, 'run-detection-btn', 'Analyzing');
+                resultsPanel.classList.add('hidden');
+                if (changeLayer) { map.removeLayer(changeLayer); }
+
+                setTimeout(() => {
+                    const bounds = aoiLayer.getBounds();
+                    const changePercentage = Math.random() * 40 + 5;
+                    const simulatedChanges = generateRandomPolygons(bounds, 15, changePercentage / 100);
+
+                    changeLayer = L.geoJSON(simulatedChanges, {
+                        style: (feature) => {
+                            switch (feature.properties.changeType) {
+                                case 'loss': return { color: "#dc2626", weight: 2, fillColor: '#ef4444', fillOpacity: 0.6 };
+                                case 'gain': return { color: "#16a34a", weight: 2, fillColor: '#22c55e', fillOpacity: 0.6 };
+                                default: return { color: "#f97316", weight: 2, fillColor: '#fb923c', fillOpacity: 0.6 };
+                            }
+                        },
+                        onEachFeature: (feature, layer) => {
+                            layer.bindPopup(`<strong>Change Type:</strong> ${feature.properties.changeType}<br><strong>Class:</strong> ${feature.properties.from} -> ${feature.properties.to}`);
+                        }
+                    }).addTo(map);
+
+                    const lossCount = simulatedChanges.filter(c => c.properties.changeType === 'loss').length;
+                    const gainCount = simulatedChanges.filter(c => c.properties.changeType === 'gain').length;
+                    
+                    lastChangeData = {
+                        changePercentage,
+                        lossCount,
+                        gainCount,
+                        center: aoiLayer.getBounds().getCenter()
+                    };
+
+                    displayResults(changePercentage, lossCount, gainCount);
+                    document.getElementById('run-detection-btn').innerHTML = `<svg id="run-icon" ...>...</svg><span id="run-btn-text">Run Detection</span>`; // Simplified restore
+                    setLoadingState(false, 'run-detection-btn');
+                    
+                    const userThreshold = parseFloat(thresholdSlider.value);
+                    if (changePercentage > userThreshold) {
+                        alertModal.classList.remove('hidden');
+                        generateAlertSummary();
+                    }
+
+                }, 2500);
+            }
+
+            function generateRandomPolygons(bounds, count, totalAreaRatio) {
+                const features = [];
+                const west = bounds.getWest(), south = bounds.getSouth(), east = bounds.getEast(), north = bounds.getNorth();
+                const latDiff = north - south, lngDiff = east - west;
+                const aoiArea = L.GeometryUtil.geodesicArea(aoiLayer.getLatLngs()[0]);
+                const targetChangeArea = aoiArea * totalAreaRatio;
+                let currentChangeArea = 0;
+
+                const changeTypes = [
+                    { type: 'loss', from: 'Forest', to: 'Urban' },
+                    { type: 'loss', from: 'Cropland', to: 'Barren' },
+                    { type: 'gain', from: 'Barren', to: 'Vegetation' },
+                ];
+
+                for (let i = 0; i < count && currentChangeArea < targetChangeArea; i++) {
+                    const centerLat = south + Math.random() * latDiff;
+                    const centerLng = west + Math.random() * lngDiff;
+                    const size = Math.random() * 0.005 + 0.001;
+                    const polygon = [[[centerLng - size, centerLat - size], [centerLng + size, centerLat - size], [centerLng + size, centerLat + size], [centerLng - size, centerLat + size], [centerLng - size, centerLat - size]]];
+                    const changeDetails = changeTypes[Math.floor(Math.random() * changeTypes.length)];
+                    const feature = { type: "Feature", properties: changeDetails, geometry: { type: "Polygon", coordinates: polygon } };
+                    
+                    if (aoiLayer.getBounds().contains(L.latLng(centerLat, centerLng))) {
+                        features.push(feature);
+                        const pLayer = L.geoJSON(feature);
+                        currentChangeArea += L.GeometryUtil.geodesicArea(pLayer.getLayers()[0].getLatLngs()[0]);
+                    }
+                }
+                return features;
+            }
+            
+            function displayResults(changePercentage, lossCount, gainCount) {
+                resultsPanel.classList.remove('hidden');
+                resultsContent.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                            <span class="font-medium text-blue-800">Total Change Detected:</span>
+                            <span class="font-bold text-xl text-blue-900">${changePercentage.toFixed(1)}%</span>
+                        </div>
+                        <div class="text-sm">
+                            <h4 class="font-semibold mb-2">Change Breakdown:</h4>
+                            <ul class="space-y-2">
+                                <li class="flex items-center"><span class="h-3 w-3 rounded-full bg-red-500 mr-2"></span><span><strong>Vegetation Loss:</strong> ${lossCount} areas</span></li>
+                                <li class="flex items-center"><span class="h-3 w-3 rounded-full bg-green-500 mr-2"></span><span><strong>Vegetation Gain:</strong> ${gainCount} areas</span></li>
+                            </ul>
+                        </div>
+                        <div class="mt-4 pt-3 border-t">
+                             <button id="generate-analysis-btn" class="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">
+                                ✨ Generate Impact Analysis
+                            </button>
+                            <div id="ai-analysis-container" class="mt-4"></div>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('generate-analysis-btn').addEventListener('click', generateImpactAnalysis);
+            }
+        });
+    </script>
+</body>
+</html>
